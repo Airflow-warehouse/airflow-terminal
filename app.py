@@ -2,13 +2,14 @@ import streamlit as st
 import pandas as pd
 import sys
 import time
+import json
 import firebase_admin
 from firebase_admin import credentials, db
 
 # --- STREAMLIT CONFIGURATION ---
 st.set_page_config(page_title="Airflow Cloud RFID Center", page_icon="⚡", layout="wide")
 
-# Custom CSS for Corporate Industrial UI
+# Custom CSS
 st.markdown("""
 <style>
     .main-header { font-size:28px !important; font-weight: bold; color: #1E3A8A; text-align: center; margin-bottom: 5px; }
@@ -22,26 +23,22 @@ st.markdown("""
 def initialize_firebase():
     try:
         if not firebase_admin._apps:
-            if hasattr(st, "secrets") and "firebase" in st.secrets:
-                cred = credentials.Certificate(dict(st.secrets["firebase"]))
-                return firebase_admin.initialize_app(cred, {'databaseURL': st.secrets["firebase"]["databaseURL"]})
-            else:
-                try:
-                    cred = credentials.Certificate("serviceAccountKey.json")
-                    return firebase_admin.initialize_app(cred, {'databaseURL': 'https://airflow-rfid-default-rtdb.firebaseio.com/'})
-                except:
-                    return None
+            if "firebase" in st.secrets and "service_account_json" in st.secrets["firebase"]:
+                service_account_info = json.loads(st.secrets["firebase"]["service_account_json"])
+                cred = credentials.Certificate(service_account_info)
+                return firebase_admin.initialize_app(cred, {
+                    'databaseURL': 'https://airflowsystem-9ac1c-default-rtdb.firebaseio.com/'
+                })
     except Exception as e:
-        st.error(f"Firebase Init Error: {e}")
+        st.error(f"Firebase Connection Error: {e}")
     return None
 
 initialize_firebase()
 
-# --- SESSION STATE FOR LOGIN ---
-if "logged_in" not in sys.modules and "logged_in" not in st.session_state:
+# --- LOGIN SCREEN ---
+if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
-# --- LOGIN SCREEN ---
 if not st.session_state["logged_in"]:
     st.markdown("<div class='main-header'>⚡ AIRFLOW SYSTEMS</div>", unsafe_allow_html=True)
     st.markdown("<div class='brand-sub'>CLOUD RFID LOGISTICS & TERMINAL MANAGER</div>", unsafe_allow_html=True)
@@ -59,53 +56,44 @@ if not st.session_state["logged_in"]:
                 time.sleep(1)
                 st.rerun()
             else:
-                st.error("Invalid Security Credentials. Access Denied.")
+                st.error("Invalid Security Credentials.")
     st.stop()
 
-# --- MAIN DASHBOARD (If Logged In) ---
+# --- MAIN DASHBOARD ---
 st.markdown("<div class='main-header'>⚡ AIRFLOW SYSTEMS CONTROL CENTER</div>", unsafe_allow_html=True)
 st.markdown("<div class='brand-sub'>REAL-TIME INVENTORY & OPERATIONS TERMINAL</div>", unsafe_allow_html=True)
 
-# Logout button in sidebar
 if st.sidebar.button("🔒 Lock Terminal"):
     st.session_state["logged_in"] = False
     st.rerun()
 
-# --- READ REAL-TIME DATA FROM FIREBASE ---
+# --- DATA FETCHING ---
 try:
     ref = db.reference('RFID_Data')
     data = ref.get()
 except Exception as e:
     data = None
-    st.warning("Running in local demo mode. Cloud database disconnected.")
+    st.error("Failed to connect to Cloud Database.")
 
-# Mock data fallback if firebase is empty or errors out
-if not data:
-    data = {
-        "item1": {"EPC": "E280113020005781", "Item_Name": "Aluminium Tube Heavy", "Timestamp": "2026-06-15 14:10:22", "Status": "IN WAREHOUSE"},
-        "item2": {"EPC": "E280113020009245", "Item_Name": "Compressor Unit V3", "Timestamp": "2026-06-15 14:12:05", "Status": "DISPATCHED"}
-    }
+# Data processing
+df = pd.DataFrame.from_dict(data, orient='index') if data else pd.DataFrame()
 
-# Convert to DataFrame
-df = pd.DataFrame.from_dict(data, orient='index')
-
-# Top Metrics Row
-total_scans = len(df)
-active_items = len(df[df['Status'] == 'IN WAREHOUSE']) if 'Status' in df.columns else total_scans
+# Metrics
+total_scans = len(df) if not df.empty else 0
+active_items = len(df[df['Status'] == 'IN WAREHOUSE']) if not df.empty and 'Status' in df.columns else 0
 
 m_col1, m_col2, m_col3 = st.columns(3)
 with m_col1:
-    st.markdown(f"<div class='metric-box'><h5>📦 Total Registered Items</h5><h2>{total_scans}</h2></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box'><h5>📦 Total Items</h5><h2>{total_scans}</h2></div>", unsafe_allow_html=True)
 with m_col2:
-    st.markdown(f"<div class='metric-box' style='border-left-color: #10B981;'><h5>✅ Active Inventory</h5><h2>{active_items}</h2></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box' style='border-left-color: #10B981;'><h5>✅ Active</h5><h2>{active_items}</h2></div>", unsafe_allow_html=True)
 with m_col3:
-    st.markdown(f"<div class='metric-box' style='border-left-color: #F59E0B;'><h5>⚡ System Status</h5><h2>ONLINE</h2></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='metric-box' style='border-left-color: #F59E0B;'><h5>⚡ Status</h5><h2>{'ONLINE' if data else 'OFFLINE'}</h2></div>", unsafe_allow_html=True)
 
 st.write("---")
-
-# Main Section
 st.subheader("📋 Real-Time RFID Scans Log")
-st.dataframe(df, use_container_width=True)
 
-# Footer
-st.markdown("<br><hr><p style='text-align: center; color: gray; font-size: 11px;'>Airflow Warehouse Terminal v2.1 • Secured via Snowflake Cloud</p>", unsafe_allow_html=True)
+if not df.empty:
+    st.dataframe(df, use_container_width=True)
+else:
+    st.info("No scan data available in the Cloud Database.")

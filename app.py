@@ -28,6 +28,7 @@ def initialize_firebase():
                 cred = credentials.Certificate(service_account_info)
                 return firebase_admin.initialize_app(cred, {
                     'databaseURL': 'https://airflowsystem-9ac1c-default-rtdb.firebaseio.com/'
+
                 })
     except Exception as e:
         st.error(f"Firebase Connection Error: {e}")

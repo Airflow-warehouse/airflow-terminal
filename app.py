@@ -15,7 +15,7 @@ st.markdown("""
     .brand-sub { font-size:13pt !important; color: #2563EB; font-weight: 600; margin-bottom: 25px; letter-spacing: 1px; }
     .metric-box { padding: 20px; background-color: #F8FAFC; border-top: 4px solid #2563EB; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     </style>
-""", unsafe_allowed_code=True)
+""", unsafe_allow_html=True)
 
 # --- FIREBASE INITIALIZATION ---
 @st.cache_resource

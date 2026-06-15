@@ -24,7 +24,7 @@ def initialize_firebase():
         if not firebase_admin._apps:
             if hasattr(st, "secrets") and "firebase" in st.secrets:
                 cred = credentials.Certificate(dict(st.secrets["firebase"]))
-                return firebase_admin.initialize_app(cred, {'databaseURL': st.secrets["firebase"]["databaseURL"]})
+                return firebase_admin.initialize_app(cred, {'databaseURL': 'https://airflowsystem-9ac1c-default-rtdb.firebaseio.com/'})
             else:
                 try:
                     cred = credentials.Certificate("serviceAccountKey.json")

@@ -6,85 +6,73 @@ from firebase_admin import credentials, db
 from datetime import datetime
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Airflow Cloud RFID Center", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Airflow Systems Pro", page_icon="⚡", layout="centered")
 
-# MOBILE RESPONSIVE CSS
-st.markdown("""
-<style>
-    .stTabs [data-baseweb="tab-list"] { gap: 2px; }
-    .stTabs [data-baseweb="tab"] { padding: 10px; font-size: 14px; }
-    .metric-box { padding: 15px; background-color: #F8FAFC; border-radius: 10px; border-left: 5px solid #2563EB; margin-bottom: 10px; }
-</style>
-""", unsafe_allow_html=True)
-
-# --- FIREBASE INIT ---
 @st.cache_resource
 def initialize_firebase():
     if not firebase_admin._apps:
         json_str = st.secrets["firebase"]["service_account_json"].strip()
-        service_account_info = json.loads(json_str)
-        cred = credentials.Certificate(service_account_info)
+        cred = credentials.Certificate(json.loads(json_str))
         firebase_admin.initialize_app(cred, {'databaseURL': 'https://airflowsystem-9ac1c-default-rtdb.firebaseio.com/'})
 
-try:
-    initialize_firebase()
-except Exception as e:
-    st.error("Firebase Connection Error!")
+initialize_firebase()
 
 # --- LOGIN ---
 if "logged_in" not in st.session_state: st.session_state["logged_in"] = False
 
 if not st.session_state["logged_in"]:
     st.title("⚡ Airflow Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    user = st.text_input("Username")
+    pwd = st.text_input("Password", type="password")
     if st.button("Login"):
-        if username == "admin" and password == "airflow77":
+        if user == "admin" and pwd == "airflow77":
             st.session_state["logged_in"] = True
             st.rerun()
+        else: st.error("Galat credentials!")
     st.stop()
 
 # --- MAIN UI ---
-st.title("⚡ Airflow Control")
-tabs = st.tabs(["Dash", "Manage", "Log"])
+st.title("⚡ Airflow Control Center")
+menu = st.selectbox("Menu Chunne:", ["Dashboard", "Manage Inventory", "History Logs"])
 
-# TAB 1: DASHBOARD
-with tabs[0]:
-    ref = db.reference('RFID_Data')
-    data = ref.get()
-    df = pd.DataFrame.from_dict(data, orient='index') if data else pd.DataFrame()
-    
-    col1, col2 = st.columns(2)
-    with col1: st.markdown(f"<div class='metric-box'>📦 Total Items: {len(df) if not df.empty else 0}</div>", unsafe_allow_html=True)
-    with col2: st.markdown(f"<div class='metric-box'>⚡ Status: {'ONLINE' if data else 'READY'}</div>", unsafe_allow_html=True)
-    
-    if not df.empty: st.dataframe(df, use_container_width=True)
-    else: st.info("No data found.")
+# --- DASHBOARD ---
+if menu == "Dashboard":
+    st.subheader("Live Inventory")
+    data = db.reference('RFID_Data').get()
+    if data:
+        df = pd.DataFrame.from_dict(data, orient='index')
+        st.dataframe(df, use_container_width=True)
+    else: st.info("Koi item nahi mila.")
 
-# TAB 2: MANAGE
-with tabs[1]:
-    st.subheader("Manage Inventory")
-    item_id = st.text_input("Item ID")
-    item_name = st.text_input("Item Name")
+# --- MANAGE ---
+elif menu == "Manage Inventory":
+    st.subheader("Inventory Control")
+    action = st.radio("Kya karna hai?", ["Add/Update Item", "Delete Item (Remove)"])
     
-    if st.button("Update Inventory"):
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # Update Main Data
-        db.reference(f'RFID_Data/{item_id}').set({"Name": item_name, "Status": "IN WAREHOUSE", "Time": now})
-        # Push to History
-        db.reference('History').push({"Action": "Added/Updated", "ID": item_id, "Name": item_name, "Time": now})
-        st.success("Item Updated and logged in History!")
-        st.rerun()
+    if action == "Add/Update Item":
+        epc = st.text_input("EPC ID (Unique Code)")
+        name = st.text_input("Product Name")
+        if st.button("Save/Update"):
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            data = {"EPC": epc, "Item_Name": name, "Status": "IN WAREHOUSE", "Timestamp": now}
+            db.reference(f'RFID_Data/{epc}').set(data)
+            db.reference('History').push({**data, "Action": "Added/Updated"})
+            st.success("Item successfully update ho gaya!")
+            
+    else:
+        del_epc = st.text_input("Delete karne ke liye EPC ID daalein")
+        if st.button("Confirm Delete"):
+            db.reference(f'RFID_Data/{del_epc}').delete()
+            db.reference('History').push({"Action": "Deleted", "EPC": del_epc, "Time": str(datetime.now())})
+            st.warning("Item database se hata diya gaya!")
 
-# TAB 3: LOG
-with tabs[2]:
-    st.subheader("System History Log")
+# --- LOGS ---
+elif menu == "History Logs":
+    st.subheader("Saari Purani Activity")
     hist = db.reference('History').get()
     if hist:
-        hist_df = pd.DataFrame.from_dict(hist, orient='index')
-        st.dataframe(hist_df.sort_index(ascending=False), use_container_width=True)
-    else:
-        st.info("No history logs available yet.")
+        df_hist = pd.DataFrame.from_dict(hist, orient='index')
+        st.dataframe(df_hist.sort_index(ascending=False), use_container_width=True)
 
 if st.sidebar.button("🔒 Logout"):
     st.session_state["logged_in"] = False

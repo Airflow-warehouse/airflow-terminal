@@ -19,7 +19,7 @@ st.markdown("""
 
 # --- HELPER FUNCTION FOR IST TIME ---
 def get_ist_time():
-    # Indian Standard Time (IST) is UTC + 5:30
+    # Indian Standard Time (IST) UTC + 5:30 ke liye
     ist_zone = timezone(timedelta(hours=5, minutes=30))
     return datetime.now(ist_zone).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -63,16 +63,38 @@ if not st.session_state["logged_in"]:
 st.title("⚡ Airflow Operations Center")
 menu = st.selectbox("Navigation Menu", ["Live Dashboard", "Inventory Management", "System History"])
 
-# 1. LIVE DASHBOARD
+# 1. LIVE DASHBOARD WITH MULTI-COLUMN SEARCH
 if menu == "Live Dashboard":
-    st.subheader("Real-time ESP32 Feed")
+    st.subheader("Real-time ESP32 Feed & Advanced Search")
+    
     data = db.reference('RFID_Data').get()
     if data:
         df = pd.DataFrame.from_dict(data, orient='index')
-        # Reordering columns for professional look
-        cols = [c for c in ["EPC", "Item_Name", "Status", "Timestamp"] if c in df.columns]
-        if cols:
-            df = df[cols]
+        
+        # Columns set karna (Purane 'Name' aur naye 'Item_Name' dono ke liye)
+        cols_to_show = [c for c in ["EPC", "Item_Name", "Name", "Status", "Timestamp", "Time"] if c in df.columns]
+        if cols_to_show:
+            df = df[cols_to_show]
+            
+        # ADVANCED MULTI-COLUMN SEARCH BAR
+        search_query = st.text_input("🔍 Search by Name or EPC ID...", placeholder="Type Product Name, EPC Tag Code, or Status...")
+        
+        # Agar search box me kuch type kiya hai toh filter chalega
+        if search_query:
+            # Sabhi rows ke liye initially 'False' mask banana
+            mask = pd.Series(False, index=df.index)
+            
+            # Index (yani EPC ID / key) me search karna
+            mask = mask | df.index.astype(str).str.contains(search_query, case=False, na=False)
+            
+            # Baaki saare text columns me check karna
+            for text_col in ["EPC", "Item_Name", "Name", "Status"]:
+                if text_col in df.columns:
+                    mask = mask | df[text_col].astype(str).str.contains(search_query, case=False, na=False)
+            
+            df = df[mask]
+            st.caption(f"Found {len(df)} matching results.")
+
         st.dataframe(df, use_container_width=True)
         st.success("ESP32 Connection Status: ONLINE & Streaming")
     else: 
@@ -89,13 +111,11 @@ elif menu == "Inventory Management":
         name = st.text_input("Item Name")
         if st.button("Update Inventory"):
             if epc and name:
-                now = get_ist_time()  # Indian Standard Time (IST) use kiya hai
-                # Save to main data node
+                now = get_ist_time()
                 item_data = {"EPC": epc, "Item_Name": name, "Status": "IN WAREHOUSE", "Timestamp": now}
                 db.reference(f'RFID_Data/{epc}').set(item_data)
-                # Log to history
                 db.reference('History').push({"Action": "Added/Updated", "EPC": epc, "Item_Name": name, "Timestamp": now})
-                st.success(f"Item '{name}' successfully updated in inventory and logged.")
+                st.success(f"Item '{name}' successfully updated in inventory.")
             else:
                 st.error("Please fill in both EPC ID and Item Name.")
                 
@@ -103,14 +123,11 @@ elif menu == "Inventory Management":
         del_epc = st.text_input("Enter EPC to Delete")
         if st.button("Confirm Delete"):
             if del_epc:
-                # Check if item exists before deleting
                 existing_item = db.reference(f'RFID_Data/{del_epc}').get()
-                item_name = existing_item.get("Item_Name", "Unknown Item") if existing_item else "Unknown Item"
+                item_name = existing_item.get("Item_Name", existing_item.get("Name", "Unknown Item")) if existing_item else "Unknown Item"
                 
-                # Perform Delete
                 db.reference(f'RFID_Data/{del_epc}').delete()
-                # Log action to history
-                now = get_ist_time()  # Indian Standard Time (IST) use kiya hai
+                now = get_ist_time()
                 db.reference('History').push({"Action": "Deleted", "EPC": del_epc, "Item_Name": item_name, "Timestamp": now})
                 st.warning(f"Item with EPC '{del_epc}' removed from inventory.")
             else:

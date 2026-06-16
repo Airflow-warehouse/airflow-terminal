@@ -3,7 +3,7 @@ import pandas as pd
 import json
 import firebase_admin
 from firebase_admin import credentials, db
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Airflow Operations", page_icon="⚡", layout="wide")
@@ -16,6 +16,12 @@ st.markdown("""
     .stButton>button { width: 100%; border-radius: 5px; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
+
+# --- HELPER FUNCTION FOR IST TIME ---
+def get_ist_time():
+    # Indian Standard Time (IST) is UTC + 5:30
+    ist_zone = timezone(timedelta(hours=5, minutes=30))
+    return datetime.now(ist_zone).strftime("%Y-%m-%d %H:%M:%S")
 
 # --- FIREBASE INIT ---
 @st.cache_resource
@@ -83,7 +89,7 @@ elif menu == "Inventory Management":
         name = st.text_input("Item Name")
         if st.button("Update Inventory"):
             if epc and name:
-                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                now = get_ist_time()  # Indian Standard Time (IST) use kiya hai
                 # Save to main data node
                 item_data = {"EPC": epc, "Item_Name": name, "Status": "IN WAREHOUSE", "Timestamp": now}
                 db.reference(f'RFID_Data/{epc}').set(item_data)
@@ -104,7 +110,7 @@ elif menu == "Inventory Management":
                 # Perform Delete
                 db.reference(f'RFID_Data/{del_epc}').delete()
                 # Log action to history
-                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                now = get_ist_time()  # Indian Standard Time (IST) use kiya hai
                 db.reference('History').push({"Action": "Deleted", "EPC": del_epc, "Item_Name": item_name, "Timestamp": now})
                 st.warning(f"Item with EPC '{del_epc}' removed from inventory.")
             else:
